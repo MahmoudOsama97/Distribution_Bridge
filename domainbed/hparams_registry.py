@@ -139,6 +139,16 @@ def _hparams(algorithm, dataset, random_seed):
         _hparam('ib_lambda', 1e2, lambda r: 10**r.uniform(-1, 5))
         _hparam('ib_penalty_anneal_iters', 500,
                 lambda r: int(10**r.uniform(0, 4)))
+    elif algorithm == "OT_MarginalDomainAlign": # Or your chosen class name
+        _hparam("lambda_ce", 1.0, lambda r: r.uniform(0.5, 1.5))
+        _hparam("lambda_ot_align", 0.01, lambda r: r.choice([1e-4, 1e-3, 0.001, 0.1])) # Start much lower
+        
+        # OT specific parameters
+        _hparam("ot_cost_metric", "sqeuclidean", lambda r: "sqeuclidean") # Usually fixed, not tuned
+        _hparam("ot_epsilon", 0.1, lambda r: r.choice([0.01, 0.1, 0.5])) # Try a range 
+        _hparam("ot_target_type", "pooled", lambda r: r.choice(['pooled', 'pairwise'])) # How to align
+        _hparam("ot_p", 2, lambda r: 2) # Usually fixed to 2 for sqeuclidean, 1 for euclidean
+        _hparam("ot_debias", True, lambda r: bool(r.choice([True, False])))    # Use debiased Sinkhorn divergence?
 
     elif algorithm == "IB_IRM":
         _hparam('irm_lambda', 1e2, lambda r: 10**r.uniform(-1, 5))
@@ -230,7 +240,7 @@ def _hparams(algorithm, dataset, random_seed):
     elif dataset == 'DomainNet':
         _hparam('batch_size', 32, lambda r: int(2**r.uniform(3, 5)))
     else:
-        _hparam('batch_size', 32, lambda r: int(2**r.uniform(3, 5.5)))
+        _hparam("batch_size", 32, lambda r: int(r.choice([32, 64, 96])))
 
     if algorithm in ['DANN', 'CDANN'] and dataset in SMALL_IMAGES:
         _hparam('lr_g', 1e-3, lambda r: 10**r.uniform(-4.5, -2.5))

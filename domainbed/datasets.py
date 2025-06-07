@@ -8,6 +8,8 @@ import torchvision.datasets.folder
 from torch.utils.data import TensorDataset, Subset, ConcatDataset, Dataset
 from torchvision.datasets import MNIST, ImageFolder
 from torchvision.transforms.functional import rotate
+from .domain_mappings import get_training_domains, ORIGINAL_DOMAINS
+
 
 from wilds.datasets.camelyon17_dataset import Camelyon17Dataset
 from wilds.datasets.fmow_dataset import FMoWDataset
@@ -245,12 +247,48 @@ class DomainNet(MultipleEnvironmentImageFolder):
         self.dir = os.path.join(root, "domain_net/")
         super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
 
+# --- REPLACE THE ORIGINAL OfficeHome CLASS WITH THIS MODIFIED VERSION ---
 class OfficeHome(MultipleEnvironmentImageFolder):
     CHECKPOINT_FREQ = 300
+    # Note: ENVIRONMENTS uses abbreviations, but the folders have full names.
+    # We will handle this mapping.
     ENVIRONMENTS = ["A", "C", "P", "R"]
+    # Create a mapping from abbreviation to full directory name.
+    FULL_ENV_NAMES = ["Art", "Clipart", "Product", "Real World"] 
+
     def __init__(self, root, test_envs, hparams):
         self.dir = os.path.join(root, "office_home/")
-        super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
+        
+        # --- START OF MODIFICATIONS ---
+        
+        # 1. Detect if we are in the synthetic data setting.
+        all_folders_in_dir = [d for d in os.listdir(self.dir) if os.path.isdir(os.path.join(self.dir, d))]
+        is_synthetic_setting = any("SynDomain" in folder for folder in all_folders_in_dir)
+
+        if is_synthetic_setting:
+            # 2. If synthetic, get the name of the test domain.
+            test_env_index = test_envs[0]
+            test_domain_name = self.FULL_ENV_NAMES[test_env_index]
+
+            # 3. Use our logic to get the correct list of training folder names.
+            training_domains = get_training_domains(all_folders_in_dir, test_domain_name)
+
+            # 4. CRITICAL: Overwrite self.ENVIRONMENTS with our dynamic list.
+            # The parent class constructor will now iterate over this new list.
+            self.ENVIRONMENTS = sorted(training_domains) # Sorting is good practice for consistency.
+
+            # 5. CRITICAL: Pass an empty list for test_envs to the parent.
+            # This is because we have already manually excluded the test environment.
+            # If we passed the original test_envs, the parent would try to exclude
+            # an index from our *new* list, which is incorrect.
+            super().__init__(self.dir, [], hparams['data_augmentation'], hparams)
+
+        else:
+            # ORIGINAL BEHAVIOR: If no "SynDomain" folders are found, do nothing special.
+            # This ensures the class works exactly as before for the standard dataset.
+            print("--- Standard OfficeHome Mode Activated (No 'SynDomain' folders found) ---")
+            super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
+
 
 class TerraIncognita(MultipleEnvironmentImageFolder):
     CHECKPOINT_FREQ = 300
@@ -553,3 +591,70 @@ class SpawriousM2M_hard(SpawriousBenchmark):
         test = ["snow","beach","dirt","jungle"]
         combinations = self.build_type2_combination(group,test)
         super().__init__(combinations['train_combinations'], combinations['test_combinations'], root_dir, hparams['data_augmentation'])
+
+
+class MySyntheticDataset(MultipleDomainDataset):
+    """
+    My Synthetic Dataset for Leave-One-Out Cross-Validation.
+
+    This dataset class dynamically selects the domains to be used for training
+    based on the specified test environment. It excludes any domain that
+    contains information from the test set, including synthetic domains
+    generated from the test domain.
+    """
+    ENVIRONMENTS = ORIGINAL_DOMAINS # The environments are the original domains
+    
+    def __init__(self, root, test_envs, hparams):
+        self.dir = os.path.join(root, "MyDataset") # Assumes data is in a folder named MyDataset
+        
+        # Determine the name of the test environment
+        # test_envs is a list of integers. We assume single-test-env setting.
+        test_env_index = test_envs[0]
+        test_env_name = self.ENVIRONMENTS[test_env_index]
+
+        # Use our custom logic to get the correct list of training domains
+        training_domain_names = get_training_domains(test_env_name)
+        
+        # --- For verification during runtime ---
+        print("--------------------------------------------------")
+        print(f"       Initializing MySyntheticDataset        ")
+        print(f"Test Environment: {test_env_name} (Index: {test_env_index})")
+        print(f"Training Domains ({len(training_domain_names)} total):")
+        for name in sorted(training_domain_names):
+             print(f"  - {name}")
+        print("--------------------------------------------------")
+        
+        # Initialize the dataset for each of the selected training domains
+        self.datasets = []
+        for domain_name in training_domain_names:
+            path = os.path.join(self.dir, domain_name)
+            # This uses the standard ImageFolder structure from DomainBed
+            # to load images from class-named subdirectories.
+            transform = transforms.Compose([
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
+            self.datasets.append(SingleDomainImageFolder(path, transform, domain_name))
+
+        self.input_shape = (3, 224, 224,)
+        self.num_classes = len(self.datasets[0].classes)
+
+# Helper class, likely already in datasets.py, but included for completeness.
+# If it already exists, you don't need to add it again.
+class SingleDomainImageFolder(ImageFolder):
+    def __init__(self, root, transform, domain_name):
+        super().__init__(root, transform)
+        self.domain_name = domain_name
+    
+    def __getitem__(self, index):
+        path, target = self.samples[index]
+        sample = self.loader(path)
+        if self.transform is not None:
+            sample = self.transform(sample)
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        return sample, target, self.domain_name
+
+

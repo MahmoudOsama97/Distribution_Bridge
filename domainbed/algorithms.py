@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.autograd as autograd
+import geomloss
 
 import copy
 import numpy as np
@@ -57,6 +58,8 @@ ALGORITHMS = [
     'RDM',
     'ADRMX',
     'URM',
+    "OT_MarginalDomainAlign",
+
 ]
 
 def get_algorithm_class(algorithm_name):
@@ -2550,3 +2553,138 @@ class ADRMX(Algorithm):
     
     def predict(self, x):
         return self.network(x)
+
+
+class OT_MarginalDomainAlign(Algorithm):
+    """
+    Domain Generalization using Optimal Transport (Sinkhorn Divergence)
+    to directly align MARGINAL feature distributions P(F|D) across domains.
+    (Using minibatches input format)
+    """
+
+    def __init__(self, input_shape, num_classes, num_domains, hparams): # args is passed to Featurizer
+        # num_domains is the number of training domains from the data loader setup
+        super(OT_MarginalDomainAlign, self).__init__(input_shape, num_classes, num_domains, hparams) # Removed args from super if base doesn't take it
+
+        self.featurizer = networks.Featurizer(input_shape, self.hparams) # Featurizer might still use args
+        self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
+        self.network = nn.Sequential(self.featurizer, self.classifier)
+
+        # Hyperparameters from hparams
+        self.lambda_ce = self.hparams.get("lambda_ce", 1.0) # Ensure this is also in registry if tuned
+        self.lambda_ot_align = self.hparams.get("lambda_ot_align", 0.01) # Default to a smaller value
+        self.ot_epsilon = self.hparams.get("ot_epsilon", 0.1)
+        # Optimal Transport Parameters from hparams
+        self.ot_cost_metric = self.hparams.get("ot_cost_metric", "sqeuclidean")
+        self.ot_target_type = self.hparams.get("ot_target_type", "pooled")
+        self.ot_p = 2 if self.ot_cost_metric == "sqeuclidean" else 1
+        self.ot_debias = self.hparams.get("ot_debias", 1)
+        self.ot_debias = True if self.ot_debias == 1 else False # Ensure boolean
+        self.sinkhorn_divergence = geomloss.SamplesLoss(
+            loss="sinkhorn", p=self.ot_p, blur=self.ot_epsilon,
+            debias=self.ot_debias, potentials=False
+        )
+
+        # Optimizer for featurizer and classifier
+        self.optimizer = torch.optim.Adam(
+            list(self.featurizer.parameters()) + list(self.classifier.parameters()),
+            lr=self.hparams["lr"],
+            weight_decay=self.hparams["weight_decay"],
+        )
+        self.register_buffer("update_count", torch.tensor([0])) # Kept from original code structure
+
+    def _compute_sinkhorn(self, features1, features2):
+        if features1.shape[0] == 0 or features2.shape[0] == 0:
+            return torch.tensor(0.0, device=features1.device)
+        try:
+            divergence = self.sinkhorn_divergence(features1, features2)
+            return torch.relu(divergence)
+        except Exception as e:
+            # print(f"Warning: OT_MarginalDomainAlign Sinkhorn failed: {e}, shapes: {features1.shape}, {features2.shape}")
+            return torch.tensor(0.0, device=features1.device)
+
+    def update(self, minibatches, unlabeled=None): # Reverted to minibatches signature
+        device = next(self.featurizer.parameters()).device
+
+        # --- Prepare Data (original style) ---
+        all_x = torch.cat([x for x, y in minibatches]).to(device)
+        all_y = torch.cat([y for x, y in minibatches]).to(device)
+        # domain_counts is implicitly the number of samples from each domain in minibatches
+        # The number of elements in minibatches should correspond to self.num_domains (training domains)
+        domain_indices_cumsum = torch.cumsum(
+            torch.tensor([x.shape[0] for x, _ in minibatches], device=device), dim=0
+        )
+        domain_starts = torch.cat(
+            (torch.tensor([0], device=device), domain_indices_cumsum[:-1])
+        )
+
+        features = self.featurizer(all_x)
+        logits = self.classifier(features)
+
+        loss_cls = F.cross_entropy(logits, all_y)
+
+        # --- Optimal Transport Alignment Loss on Marginal Domain Features P(F|D) ---
+        loss_ot_align_accum = 0.0
+        ot_comparisons_count = 0
+
+        # Collect all features for each domain from the concatenated 'features' tensor
+        domain_features_list = []
+        for i in range(len(minibatches)): # Should be self.num_domains (training domains)
+            start, end = domain_starts[i], domain_indices_cumsum[i]
+            # Get all features for domain i
+            current_domain_features = features[start:end]
+            if current_domain_features.shape[0] > 0:
+                domain_features_list.append(current_domain_features)
+        
+        if len(domain_features_list) < 2:
+            # Not enough distinct domains with samples in the batch to perform alignment
+            loss_ot_alignment = torch.tensor(0.0, device=device)
+        else:
+            if self.ot_target_type == 'pooled':
+                if not domain_features_list: # Should be caught by len < 2
+                     loss_ot_alignment = torch.tensor(0.0, device=device)
+                else:
+                    # Create a target by pooling all features from all domains in the batch
+                    all_batch_features_pooled = torch.cat(domain_features_list, dim=0)
+                    if all_batch_features_pooled.shape[0] == 0:
+                        loss_ot_alignment = torch.tensor(0.0, device=device)
+                    else:
+                        for feats_d in domain_features_list: # feats_d is P(F|D=d)
+                            if feats_d.shape[0] == 0: continue # Should be caught by append condition
+                            ot_divergence = self._compute_sinkhorn(feats_d, all_batch_features_pooled)
+                            loss_ot_align_accum += ot_divergence
+                            ot_comparisons_count += 1
+            elif self.ot_target_type == 'pairwise':
+                from itertools import combinations
+                # domain_features_list already contains features for domains with >0 samples
+                if len(domain_features_list) < 2: # Redundant with outer check
+                    loss_ot_alignment = torch.tensor(0.0, device=device)
+                else:
+                    for feats_i, feats_j in combinations(domain_features_list, 2):
+                        # No need to check shape[0] == 0 here if list only contains non-empty
+                        ot_divergence = self._compute_sinkhorn(feats_i, feats_j)
+                        loss_ot_align_accum += ot_divergence
+                        ot_comparisons_count += 1
+            else:
+                raise ValueError(f"Unsupported ot_target_type: {self.ot_target_type}")
+
+            loss_ot_alignment = (loss_ot_align_accum / ot_comparisons_count) if ot_comparisons_count > 0 \
+                                else torch.tensor(0.0, device=device)
+
+        total_loss = self.lambda_ce * loss_cls + self.lambda_ot_align * loss_ot_alignment
+
+        self.optimizer.zero_grad()
+        total_loss.backward()
+        self.optimizer.step()
+
+        self.update_count += 1 # From original code
+
+        return {"loss": total_loss.item(), "loss_cls": loss_cls.item(), "loss_ot_align": loss_ot_alignment.item()}
+
+    def predict(self, x):
+        return self.network(x)
+
+    # def end_epoch(self): # Optional
+    #     return {}
+
+
