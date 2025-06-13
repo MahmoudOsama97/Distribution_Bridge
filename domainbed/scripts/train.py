@@ -78,7 +78,16 @@ if __name__ == "__main__":
         hparams = hparams_registry.random_hparams(args.algorithm, args.dataset,
             misc.seed_hash(args.hparams_seed, args.trial_seed))
     if args.hparams:
-        hparams.update(json.loads(args.hparams))
+        # Check if the hparams argument is a path to a JSON file
+        if args.hparams.endswith('.json'):
+            print(f"--- Loading hparams from file: {args.hparams} ---")
+            with open(args.hparams, 'r') as f:
+                hparams_from_file = json.load(f)
+            hparams.update(hparams_from_file)
+        else:
+            # Otherwise, treat it as a JSON string (original behavior)
+            print("--- Loading hparams from command-line string ---")
+            hparams.update(json.loads(args.hparams))
 
     print('HParams:')
     for k, v in sorted(hparams.items()):

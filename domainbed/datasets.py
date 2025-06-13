@@ -257,7 +257,7 @@ class OfficeHome(MultipleEnvironmentImageFolder):
     FULL_ENV_NAMES = ["Art", "Clipart", "Product", "Real World"] 
 
     def __init__(self, root, test_envs, hparams):
-        self.dir = os.path.join(root, "office_home/")
+        self.dir = os.path.join(root, "office_homeSyn/")
         
         # --- START OF MODIFICATIONS ---
         
