@@ -242,6 +242,7 @@ def Featurizer(input_shape, hparams):
                 return DinoV2(input_shape, hparams)
             else:
                 raise NotImplementedError
+        print("Using ResNet for input shape", input_shape)
         return ResNet(input_shape, hparams)
     else:
         raise NotImplementedError
