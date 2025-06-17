@@ -280,7 +280,7 @@ class PACS(MultipleEnvironmentImageFolder):
 class OfficeHome(MultipleEnvironmentImageFolder):
     CHECKPOINT_FREQ = 300
     ENVIRONMENTS = ["A", "C", "P", "R"]
-    FULL_ENV_NAMES = ["Art", "Clipart", "Product", "RealWorld"] # Your folder names
+    FULL_ENV_NAMES = ["Art", "Clipart", "Product", "Real World"] # Your folder names
 
     def __init__(self, root, test_envs, hparams):
         self.dir = os.path.join(root, "office_home/")
@@ -319,7 +319,13 @@ class TerraIncognita(MultipleEnvironmentImageFolder):
             print(f"--- Standard {self.__class__.__name__} Mode Activated (No 'SynDomain' folders found) ---")
             super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
 
-            
+class DomainNet(MultipleEnvironmentImageFolder):
+    CHECKPOINT_FREQ = 1000
+    ENVIRONMENTS = ["clip", "info", "paint", "quick", "real", "sketch"]
+    def __init__(self, root, test_envs, hparams):
+        self.dir = os.path.join(root, "domain_net/")
+        super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
+                
 class SVIRO(MultipleEnvironmentImageFolder):
     CHECKPOINT_FREQ = 300
     ENVIRONMENTS = ["aclass", "escape", "hilux", "i3", "lexus", "tesla", "tiguan", "tucson", "x5", "zoe"]
