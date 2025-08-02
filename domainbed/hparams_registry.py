@@ -26,7 +26,7 @@ def _hparams(algorithm, dataset, random_seed):
         hparams[name] = (default_val, random_val_fn(random_state))
 
     # Unconditional hparam definitions.
-
+    _hparam('k_syn_domains_per_step', 4, lambda r: 4)
     _hparam('data_augmentation', True, lambda r: True)
     _hparam('resnet18', False, lambda r: False)
     _hparam('resnet50_augmix', True, lambda r: True)
@@ -238,9 +238,9 @@ def _hparams(algorithm, dataset, random_seed):
         else:
             _hparam('batch_size', 88, lambda r: int(r.uniform(70, 100)))
     elif dataset == 'DomainNet':
-        _hparam('batch_size', 32, lambda r: int(2**r.uniform(3, 5)))
+        _hparam('batch_size', 16, lambda r: 16)
     else:
-        _hparam("batch_size", 32, lambda r: 32)
+        _hparam("batch_size", 16, lambda r: 16)
 
     if algorithm in ['DANN', 'CDANN'] and dataset in SMALL_IMAGES:
         _hparam('lr_g', 1e-3, lambda r: 10**r.uniform(-4.5, -2.5))

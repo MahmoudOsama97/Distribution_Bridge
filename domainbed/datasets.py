@@ -204,6 +204,12 @@ class MultipleEnvironmentImageFolder(MultipleDomainDataset):
             environments = sorted(environments)
             print(f"Discovered {len(environments)} environments by scanning directory.")
 
+        # ==================================================================
+        # === ADD THIS LINE TO SAVE THE LIST OF LOADED DOMAINS =============
+        # ==================================================================
+        self.loaded_environments = environments
+        # ==================================================================
+
         # The rest of the original __init__ method remains the same
         transform = transforms.Compose([
             transforms.Resize((224,224)),
@@ -246,7 +252,7 @@ class OfficeHome(MultipleEnvironmentImageFolder):
     def __init__(self, root, test_envs, hparams):
         self.dir = os.path.join(root, "office_home/")
         all_folders_in_dir = sorted([d for d in os.listdir(self.dir) if os.path.isdir(os.path.join(self.dir, d))])
-        is_synthetic_setting = any("zSynDomain" in folder for folder in all_folders_in_dir)
+        is_synthetic_setting = any("SynDomain" in folder for folder in all_folders_in_dir)
 
         if is_synthetic_setting:
             test_env_index = test_envs[0]
@@ -256,7 +262,7 @@ class OfficeHome(MultipleEnvironmentImageFolder):
             domains_to_load = []
             for folder in all_folders_in_dir:
                 is_original = folder in self.FULL_ENV_NAMES
-                is_unrelated_synthetic = "zSynDomain" in folder and test_domain_name not in folder
+                is_unrelated_synthetic = "SynDomain" in folder and test_domain_name not in folder
                 if is_original or is_unrelated_synthetic:
                     domains_to_load.append(folder)
             
@@ -281,7 +287,7 @@ class VLCS(MultipleEnvironmentImageFolder):
     def __init__(self, root, test_envs, hparams):
         self.dir = os.path.join(root, "vlcs/")
         all_folders_in_dir = sorted([d for d in os.listdir(self.dir) if os.path.isdir(os.path.join(self.dir, d))])
-        is_synthetic_setting = any("zSynDomain" in folder for folder in all_folders_in_dir)
+        is_synthetic_setting = any("SynDomain" in folder for folder in all_folders_in_dir)
 
         if is_synthetic_setting:
             test_env_index = test_envs[0]
@@ -290,7 +296,7 @@ class VLCS(MultipleEnvironmentImageFolder):
             domains_to_load = []
             for folder in all_folders_in_dir:
                 is_original = folder in self.FULL_ENV_NAMES
-                is_unrelated_synthetic = "zSynDomain" in folder and test_domain_name not in folder
+                is_unrelated_synthetic = "SynDomain" in folder and test_domain_name not in folder
                 if is_original or is_unrelated_synthetic:
                     domains_to_load.append(folder)
 
@@ -313,7 +319,7 @@ class PACS(MultipleEnvironmentImageFolder):
     def __init__(self, root, test_envs, hparams):
         self.dir = os.path.join(root, "pacs/")
         all_folders_in_dir = sorted([d for d in os.listdir(self.dir) if os.path.isdir(os.path.join(self.dir, d))])
-        is_synthetic_setting = any("zSynDomain" in folder for folder in all_folders_in_dir)
+        is_synthetic_setting = any("SynDomain" in folder for folder in all_folders_in_dir)
 
         if is_synthetic_setting:
             test_env_index = test_envs[0]
@@ -322,7 +328,7 @@ class PACS(MultipleEnvironmentImageFolder):
             domains_to_load = []
             for folder in all_folders_in_dir:
                 is_original = folder in self.FULL_ENV_NAMES
-                is_unrelated_synthetic = "zSynDomain" in folder and test_domain_name not in folder
+                is_unrelated_synthetic = "SynDomain" in folder and test_domain_name not in folder
                 if is_original or is_unrelated_synthetic:
                     domains_to_load.append(folder)
 
@@ -345,7 +351,7 @@ class TerraIncognita(MultipleEnvironmentImageFolder):
     def __init__(self, root, test_envs, hparams):
         self.dir = os.path.join(root, "terra_incognita/")
         all_folders_in_dir = sorted([d for d in os.listdir(self.dir) if os.path.isdir(os.path.join(self.dir, d))])
-        is_synthetic_setting = any("zSynDomain" in folder for folder in all_folders_in_dir)
+        is_synthetic_setting = any("SynDomain" in folder for folder in all_folders_in_dir)
 
         if is_synthetic_setting:
             test_env_index = test_envs[0]
@@ -354,7 +360,7 @@ class TerraIncognita(MultipleEnvironmentImageFolder):
             domains_to_load = []
             for folder in all_folders_in_dir:
                 is_original = folder in self.FULL_ENV_NAMES
-                is_unrelated_synthetic = "zSynDomain" in folder and test_domain_name not in folder
+                is_unrelated_synthetic = "SynDomain" in folder and test_domain_name not in folder
                 if is_original or is_unrelated_synthetic:
                     domains_to_load.append(folder)
 
@@ -369,13 +375,41 @@ class TerraIncognita(MultipleEnvironmentImageFolder):
             print(f"--- Standard TerraIncognita Mode Activated ---")
             super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
 
+# THIS IS THE NEWLY MODIFIED CLASS
 class DomainNet(MultipleEnvironmentImageFolder):
-    CHECKPOINT_FREQ = 1000
-    ENVIRONMENTS = ["clip", "info", "paint", "quick", "real", "sketch"]
+    CHECKPOINT_FREQ = 100
+    N_STEPS = 10001
+    ENVIRONMENTS = ["clipart", "infograph", "painting", "quickdraw", "real", "sketch"]
+    FULL_ENV_NAMES = ["clipart", "infograph", "painting", "quickdraw", "real", "sketch"]
+
     def __init__(self, root, test_envs, hparams):
         self.dir = os.path.join(root, "domain_net/")
-        super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
-                            
+        # ==================================================================
+        # === ADD THIS LINE ================================================
+        self.original_domain_names = self.FULL_ENV_NAMES
+        # ==================================================================
+        all_folders_in_dir = sorted([d for d in os.listdir(self.dir) if os.path.isdir(os.path.join(self.dir, d))])
+        is_synthetic_setting = any("zSynDomain" in folder for folder in all_folders_in_dir)
+
+        if is_synthetic_setting:
+            test_env_index = test_envs[0]
+            test_domain_name = self.FULL_ENV_NAMES[test_env_index]
+            domains_to_load = []
+            for folder in all_folders_in_dir:
+                is_original = folder in self.FULL_ENV_NAMES
+                is_unrelated_synthetic = "zSynDomain" in folder and test_domain_name not in folder
+                if is_original or is_unrelated_synthetic:
+                    domains_to_load.append(folder)
+            final_test_envs = [domains_to_load.index(test_domain_name)]
+            print(f"--- Activating PRUNED synthetic data mode for DomainNet ---")
+            print(f"Test Domain: {test_domain_name}. New test index: {final_test_envs[0]}.")
+            print(f"Loading a total of {len(domains_to_load)} domains: {domains_to_load}")
+            super().__init__(self.dir, final_test_envs, hparams['data_augmentation'], hparams, environments_to_load=domains_to_load)
+        else:
+            print(f"--- Standard DomainNet Mode Activated ---")
+            super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
+
+
 class SVIRO(MultipleEnvironmentImageFolder):
     CHECKPOINT_FREQ = 300
     ENVIRONMENTS = ["aclass", "escape", "hilux", "i3", "lexus", "tesla", "tiguan", "tucson", "x5", "zoe"]

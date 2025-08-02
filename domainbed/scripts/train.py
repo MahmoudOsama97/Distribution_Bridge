@@ -21,6 +21,51 @@ from domainbed import algorithms
 from domainbed.lib import misc
 from domainbed.lib.fast_data_loader import InfiniteDataLoader, FastDataLoader
 
+
+def two_tiered_domain_sampling_iterator(loaders_dict, core_domain_indices, syn_domain_indices, k_syn_domains):
+    """
+    A generator that, at each step, yields a batch from ALL core domains
+    and a batch from a random subset of k_syn_domains synthetic domains.
+    """
+    # Create persistent iterators for each loader
+    iterators = {idx: iter(loader) for idx, loader in loaders_dict.items()}
+    
+    # Ensure k is not larger than the available synthetic domains
+    k_syn_domains = min(k_syn_domains, len(syn_domain_indices))
+    
+    while True:
+        # 1. Get a batch from every single core domain
+        core_batches = [next(iterators[i]) for i in core_domain_indices]
+        
+        # 2. Randomly sample k synthetic domain indices
+        sampled_syn_indices = random.sample(syn_domain_indices, k_syn_domains)
+        
+        # 3. Get a batch from each of the sampled synthetic domains
+        syn_batches = [next(iterators[i]) for i in sampled_syn_indices]
+        
+        # 4. Yield the combined list of batches for this step
+        yield core_batches + syn_batches
+# --- INSERT THIS NEW HELPER FUNCTION AT THE TOP OF train.py ---
+
+def domain_sampling_iterator(loaders_dict, domain_indices, k_domains):
+    """
+    A generator that, at each step, randomly samples k domains and yields
+    a batch from each of them.
+    Args:
+        loaders_dict (dict): A dictionary mapping domain_index -> dataloader.
+        domain_indices (list): A list of the keys in loaders_dict to sample from.
+        k_domains (int): The number of domains to sample at each step.
+    """
+    # Create persistent iterators for each loader
+    iterators = {idx: iter(loader) for idx, loader in loaders_dict.items()}
+    while True:
+        # At each step, randomly sample k domain indices without replacement
+        sampled_indices = random.sample(domain_indices, k_domains)
+        # Yield a list containing one batch from each of the k sampled domains
+        yield [next(iterators[i]) for i in sampled_indices]
+
+# --- THE REST OF THE FILE FOLLOWS ---
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Domain generalization')
     parser.add_argument('--data_dir', type=str)
@@ -152,13 +197,50 @@ if __name__ == "__main__":
     if args.task == "domain_adaptation" and len(uda_splits) == 0:
         raise ValueError("Not enough unlabeled samples for domain adaptation.")
 
-    train_loaders = [InfiniteDataLoader(
-        dataset=env,
-        weights=env_weights,
-        batch_size=hparams['batch_size'],
-        num_workers=dataset.N_WORKERS)
-        for i, (env, env_weights) in enumerate(in_splits)
-        if i not in args.test_envs]
+    # 1. Get the names of all loaded environments from the dataset object.
+    # This is crucial for distinguishing core vs. synthetic domains.
+    all_env_names = dataset.loaded_environments    
+    # 2. Separate all available training indices into 'core' and 'synthetic' tiers.
+    core_train_indices = []
+    syn_train_indices = []
+    for i, _ in enumerate(in_splits):
+        if i not in args.test_envs: # Ensure it's a training domain
+            # Check the name of the domain at this index
+            if "SynDomain" in all_env_names[i] or "zSynDomain" in all_env_names[i]:
+                syn_train_indices.append(i)
+            else:
+                core_train_indices.append(i)
+    
+    print(f"Separated training domains into {len(core_train_indices)} CORE domains and {len(syn_train_indices)} SYNTHETIC domains.")
+    print(f"Core domains (indices): {core_train_indices}")
+    print(f"Synthetic domains (indices): {syn_train_indices}")
+
+    # 3. Create the dictionary of data loaders, covering all training domains.
+    all_train_indices = core_train_indices + syn_train_indices
+    train_loaders_dict = {
+        i: InfiniteDataLoader(
+            dataset=in_splits[i][0], # env
+            weights=in_splits[i][1], # env_weights
+            batch_size=hparams['batch_size'],
+            num_workers=dataset.N_WORKERS
+        )
+        for i in all_train_indices
+    }
+    
+    # 4. Get the number of synthetic domains to sample per step (k_syn) from hparams.
+    k_syn_per_step = hparams.get('k_syn_domains_per_step', 2) # Default to sampling 2 synthetic domains
+    print(f"Will use ALL {len(core_train_indices)} core domains + a random sample of {k_syn_per_step} synthetic domains per step.")
+
+    # 5. Instantiate our new two-tiered iterator.
+    train_minibatches_iterator = two_tiered_domain_sampling_iterator(
+        train_loaders_dict,
+        core_train_indices,
+        syn_train_indices,
+        k_syn_per_step
+    )
+
+    # 6. Calculate the total number of domains the algorithm will see per step.
+    num_domains_per_step = len(core_train_indices) + k_syn_per_step
 
     uda_loaders = [InfiniteDataLoader(
         dataset=env,
@@ -167,28 +249,61 @@ if __name__ == "__main__":
         num_workers=dataset.N_WORKERS)
         for i, (env, env_weights) in enumerate(uda_splits)]
 
-    eval_loaders = [FastDataLoader(
-        dataset=env,
-        batch_size=64,
-        num_workers=dataset.N_WORKERS)
-        for env, _ in (in_splits + out_splits + uda_splits)]
-    eval_weights = [None for _, weights in (in_splits + out_splits + uda_splits)]
-    eval_loader_names = ['env{}_in'.format(i)
-        for i in range(len(in_splits))]
-    eval_loader_names += ['env{}_out'.format(i)
-        for i in range(len(out_splits))]
-    eval_loader_names += ['env{}_uda'.format(i)
-        for i in range(len(uda_splits))]
+# --- REPLACE WITH THIS NEW BLOCK ---
+
+    # ==============================================================================
+    # === MODIFIED EVALUATION SETUP ================================================
+    # ==============================================================================
+    
+    print("--- Setting up evaluation loaders for ORIGINAL domains only ---")
+
+    # 1. Identify the indices of the original domains within the full loaded dataset.
+    original_domain_indices = [
+        i for i, name in enumerate(dataset.loaded_environments)
+        if name in dataset.original_domain_names
+    ]
+    print(f"Found {len(original_domain_indices)} original domains to evaluate at indices: {original_domain_indices}")
+
+    # 2. Build the evaluation lists by iterating ONLY over the original domain indices.
+    eval_loaders = []
+    eval_weights = []
+    eval_loader_names = []
+    
+    # We use a new counter `j` to create clean log names like env0, env1, ... env5
+    for j, i in enumerate(original_domain_indices):
+        # Add the 'in' split for the original domain
+        eval_loaders.append(FastDataLoader(
+            dataset=in_splits[i][0],
+            batch_size=64,
+            num_workers=dataset.N_WORKERS
+        ))
+        eval_weights.append(in_splits[i][1])
+        # The name uses the new, clean index `j`
+        eval_loader_names.append(f'env{j}_in')
+
+        # Add the 'out' split for the original domain
+        eval_loaders.append(FastDataLoader(
+            dataset=out_splits[i][0],
+            batch_size=64,
+            num_workers=dataset.N_WORKERS
+        ))
+        eval_weights.append(out_splits[i][1])
+        eval_loader_names.append(f'env{j}_out')
+
+    # Note: This simple version ignores UDA splits for clarity.
+    # The main evaluation loop will now only see the 6 original domains.
+    # ==============================================================================
+    # === END OF MODIFIED EVALUATION SETUP =========================================
+    # ==============================================================================
 
     algorithm_class = algorithms.get_algorithm_class(args.algorithm)
-    algorithm = algorithm_class(dataset.input_shape, dataset.num_classes, len(dataset) - len(args.test_envs), hparams)
-
+    algorithm = algorithm_class(dataset.input_shape, dataset.num_classes, num_domains_per_step, hparams)
     if algorithm_dict is not None:
         algorithm.load_state_dict(algorithm_dict)
 
     algorithm.to(device)
 
-    train_minibatches_iterator = zip(*train_loaders)
+    # train_minibatches_iterator = zip(*train_loaders)
     uda_minibatches_iterator = zip(*uda_loaders)
     checkpoint_vals = collections.defaultdict(lambda: [])
 
