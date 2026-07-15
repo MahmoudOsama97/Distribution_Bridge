@@ -1,7 +1,6 @@
-torch==1.12.1
-torchvision==0.13.1
-backpack-for-pytorch==1.3.0
-numpy==1.22.4
+torch==2.1.2
+torchvision==0.16.2
+numpy==1.26.4
 wilds==2.0.0
 tqdm==4.66.4
 imageio==2.9.0
@@ -9,3 +8,22 @@ gdown==3.13.0
 parameterized==0.9.0
 Pillow==10.3.0
 timm==0.9.16
+geomloss
+einops
+
+# The Distribution Bridge generation pipeline (distribution_bridge/generation and
+# distribution_bridge/analysis, alongside this domainbed/ package at the repo root)
+# additionally needs, per the paper's Supp. S6:
+#   diffusers==0.21.0
+#   transformers==4.33.0
+#   POT==0.9.0
+#   open_clip_torch
+#   accelerate, huggingface_hub
+# See environment/setup_env.sh for a full, pinned install of both sets of deps.
+
+# backpack-for-pytorch==1.3.0 (used only by algorithms.Fishr) hard-pins torch<2.0
+# and is incompatible with torch>=2.1's changed nn.grad API - algorithms.py already
+# guards its import in a try/except (falls back to backpack=None), so it is
+# intentionally omitted here rather than pinned against a torch version this repo
+# no longer runs on. Install it separately (accepting the Fishr-only limitation) if
+# needed: `pip install --no-deps backpack-for-pytorch==1.3.0`.

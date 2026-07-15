@@ -250,6 +250,7 @@ class OfficeHome(MultipleEnvironmentImageFolder):
     FULL_ENV_NAMES = ["Art", "Clipart", "Product", "Real World"]
 
     def __init__(self, root, test_envs, hparams):
+        self.original_domain_names = self.FULL_ENV_NAMES
         self.dir = os.path.join(root, "office_home/")
         all_folders_in_dir = sorted([d for d in os.listdir(self.dir) if os.path.isdir(os.path.join(self.dir, d))])
         is_synthetic_setting = any("SynDomain" in folder for folder in all_folders_in_dir)
@@ -285,6 +286,7 @@ class VLCS(MultipleEnvironmentImageFolder):
     FULL_ENV_NAMES = ["Caltech101", "LabelMe", "SUN09", "VOC2007"]
 
     def __init__(self, root, test_envs, hparams):
+        self.original_domain_names = self.FULL_ENV_NAMES
         self.dir = os.path.join(root, "vlcs/")
         all_folders_in_dir = sorted([d for d in os.listdir(self.dir) if os.path.isdir(os.path.join(self.dir, d))])
         is_synthetic_setting = any("SynDomain" in folder for folder in all_folders_in_dir)
@@ -317,6 +319,7 @@ class PACS(MultipleEnvironmentImageFolder):
     FULL_ENV_NAMES = ["art_painting", "cartoon", "photo", "sketch"]
 
     def __init__(self, root, test_envs, hparams):
+        self.original_domain_names = self.FULL_ENV_NAMES
         self.dir = os.path.join(root, "pacs/")
         all_folders_in_dir = sorted([d for d in os.listdir(self.dir) if os.path.isdir(os.path.join(self.dir, d))])
         is_synthetic_setting = any("SynDomain" in folder for folder in all_folders_in_dir)
@@ -349,6 +352,7 @@ class TerraIncognita(MultipleEnvironmentImageFolder):
     FULL_ENV_NAMES = ["location_100", "location_38", "location_43", "location_46"]
 
     def __init__(self, root, test_envs, hparams):
+        self.original_domain_names = self.FULL_ENV_NAMES
         self.dir = os.path.join(root, "terra_incognita/")
         all_folders_in_dir = sorted([d for d in os.listdir(self.dir) if os.path.isdir(os.path.join(self.dir, d))])
         is_synthetic_setting = any("SynDomain" in folder for folder in all_folders_in_dir)
