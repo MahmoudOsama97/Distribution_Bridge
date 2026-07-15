@@ -1,5 +1,33 @@
-__pycache__
+__pycache__/
+*.pyc
 domainbed/facebook.py
 
+# Datasets and generated DomainBed data roots (download via domainbed/scripts/download.py
+# or build via distribution_bridge/data_prep/; never committed). Anchored to the repo
+# root so this does not also match distribution_bridge/data_prep/ (source code).
 domainbed/data/*
+/data/
+/data_*/
+
+# Training / sweep outputs
 train_output/*
+results/
+
+# Generated synthetic images, cached embeddings, and generation metadata are
+# reproducible from the scripts in distribution_bridge/generation/ - not committed.
+SynDomain_*/
+*.npz
+stage1_embeddings*/
+stage2_metadata/
+
+# Environment / caches
+*.venv/
+venv/
+.env
+hf_cache/
+torch_cache/
+*.log
+
+# OS / editor
+.DS_Store
+.ipynb_checkpoints/

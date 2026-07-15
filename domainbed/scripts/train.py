@@ -155,6 +155,21 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError
 
+    # In synthetic-domain mode, the dataset's internal environment ordering is
+    # alphabetically sorted over ALL loaded folders (real + "SynDomain_*"/
+    # "zSynDomain_*"), which shifts each real domain's position away from its
+    # index in FULL_ENV_NAMES - "SynDomain_*" sorts before lowercase real domain
+    # names. args.test_envs is a CLI index into the *original* FULL_ENV_NAMES
+    # order, so it must be remapped to the dataset's actual position for every
+    # downstream use (train/uda split, core-vs-synthetic separation, eval loader
+    # setup, domain counts) - otherwise the held-out test domain silently leaks
+    # into training and an unrelated synthetic domain gets wrongly excluded.
+    # No-op in standard mode, where sorted(real domain names) == FULL_ENV_NAMES.
+    _requested_test_domain_names = [dataset.original_domain_names[i] for i in args.test_envs]
+    args.test_envs = [dataset.loaded_environments.index(name) for name in _requested_test_domain_names]
+    print(f"Remapped test_envs to the dataset's actual domain ordering: "
+          f"{args.test_envs} ({_requested_test_domain_names})")
+
     # Split each env into an 'in-split' and an 'out-split'. We'll train on
     # each in-split except the test envs, and evaluate on all splits.
 

@@ -1,150 +1,174 @@
-# Welcome to DomainBed
+# Domain Distribution Bridge (DDB)
 
-DomainBed is a PyTorch suite containing benchmark datasets and algorithms for domain generalization, as introduced in [In Search of Lost Domain Generalization](https://arxiv.org/abs/2007.01434).
+**Synthesizing Continuous Style Manifolds for Robust Generalization**
 
-## Current results
+Mahmoud Soliman, Ahmed Elgazwy, Ahmed Radwan, Omar Abdelaziz, Ahmad Abdel-Qader, Islam Osman, Mohamed S. Shehata
+The University of British Columbia, Kelowna, BC, Canada
 
-![Result table](domainbed/results/2020_10_06_7df6f06/results.png)
+Domain generalization (DG) methods typically treat source domains as discrete
+samples, failing to cover the continuous style manifold between them. Distribution
+Bridge (DDB) represents each domain-class pair as a full empirical distribution in
+a pre-trained vision-language embedding space and performs optimal transport
+displacement interpolation, producing intermediate distributions whose statistics vary
+continuously along the Wasserstein geodesic between source domains. `K` uniformly
+spaced interpolated distributions reduce the covering radius along a source-pair
+geodesic by a factor of `K+1`, motivating a structural decomposition of the target
+risk. The interpolated embeddings condition a diffusion model (unCLIP) to generate
+images capturing intermediate domain statistics, which are then used to densify
+training support for any downstream DG algorithm.
 
-Full results for [commit 7df6f06](https://github.com/facebookresearch/DomainBed/tree/7df6f06a6f9062284812a3f174c306218932c5e4) in LaTeX format available [here](domainbed/results/2020_10_06_7df6f06/results.tex).
+This repository contains the full pipeline: CLIP embedding extraction, Sinkhorn-OT
+interpolation and unCLIP-conditioned synthetic domain generation, integration with
+[DomainBed](https://github.com/facebookresearch/DomainBed) training, and the
+verification/analysis scripts used to check the paper's theoretical claims empirically
+(generation fidelity, extrapolation distance, covering-radius reduction).
 
-## Available algorithms
+## Repository layout
 
-The [currently available algorithms](domainbed/algorithms.py) are:
+```
+distribution_bridge/
+├── generation/          <-- the DDB generation pipeline (see below)
+│   ├── unclip_pipeline.py       # unCLIP img2img-embeds pipeline (raw CLIP embedding -> image)
+│   ├── extract_embeddings.py    # Stage 1: CLIP embedding extraction + caching
+│   ├── ot_interpolate.py        # Algorithm 1: Sinkhorn-OT + barycentric projection
+│   ├── generate_ot.py           # Stage 2a: OT-interpolated synthetic domain generation
+│   └── generate_diffsrc.py      # Stage 2b: no-interpolation control (endpoint conditioning)
+├── data_prep/            # builds condition-specific / K-sweep DomainBed data roots
+├── analysis/              # empirical verification of the paper's theoretical claims
+│   ├── common.py                # shared exact-OT / D_max utilities
+│   ├── eps_gen.py                # generation fidelity (Assumption 3.4)
+│   ├── eps_extrap.py             # extrapolation distance to the source 1-skeleton (Def. 3.4)
+│   ├── table7_reconcile.py       # Table 7 covering-radius statistics, sanity-gated
+│   └── eps_extrap_normalized.py  # eps_extrap under the ℓ2-normalized embedding convention
+└── smoke_test/            # environment + pipeline sanity checks
 
-* Empirical Risk Minimization (ERM, [Vapnik, 1998](https://www.wiley.com/en-fr/Statistical+Learning+Theory-p-9780471030034))
-* Invariant Risk Minimization (IRM, [Arjovsky et al., 2019](https://arxiv.org/abs/1907.02893))
-* Group Distributionally Robust Optimization (GroupDRO, [Sagawa et al., 2020](https://arxiv.org/abs/1911.08731))
-* Interdomain Mixup (Mixup, [Yan et al., 2020](https://arxiv.org/abs/2001.00677))
-* Marginal Transfer Learning (MTL, [Blanchard et al., 2011-2020](https://arxiv.org/abs/1711.07910))
-* Meta Learning Domain Generalization (MLDG, [Li et al., 2017](https://arxiv.org/abs/1710.03463))
-* Maximum Mean Discrepancy (MMD, [Li et al., 2018](https://openaccess.thecvf.com/content_cvpr_2018/papers/Li_Domain_Generalization_With_CVPR_2018_paper.pdf))
-* Deep CORAL (CORAL, [Sun and Saenko, 2016](https://arxiv.org/abs/1607.01719))
-* Domain Adversarial Neural Network (DANN, [Ganin et al., 2015](https://arxiv.org/abs/1505.07818))
-* Conditional Domain Adversarial Neural Network (CDANN, [Li et al., 2018](https://openaccess.thecvf.com/content_ECCV_2018/papers/Ya_Li_Deep_Domain_Generalization_ECCV_2018_paper.pdf))
-* Style Agnostic Networks (SagNet, [Nam et al., 2020](https://arxiv.org/abs/1910.11645))
-* Adaptive Risk Minimization (ARM, [Zhang et al., 2020](https://arxiv.org/abs/2007.02931)), contributed by [@zhangmarvin](https://github.com/zhangmarvin)
-* Variance Risk Extrapolation (VREx, [Krueger et al., 2020](https://arxiv.org/abs/2003.00688)), contributed by [@zdhNarsil](https://github.com/zdhNarsil)
-* Representation Self-Challenging (RSC, [Huang et al., 2020](https://arxiv.org/abs/2007.02454)), contributed by [@SirRob1997](https://github.com/SirRob1997)
-* Spectral Decoupling (SD, [Pezeshki et al., 2020](https://arxiv.org/abs/2011.09468))
-* Learning Explanations that are Hard to Vary (AND-Mask, [Parascandolo et al., 2020](https://arxiv.org/abs/2009.00329))
-* Out-of-Distribution Generalization with Maximal Invariant Predictor (IGA, [Koyama et al., 2020](https://arxiv.org/abs/2008.01883))
-* Gradient Matching for Domain Generalization (Fish, [Shi et al., 2021](https://arxiv.org/pdf/2104.09937.pdf))
-* Self-supervised Contrastive Regularization (SelfReg, [Kim et al., 2021](https://arxiv.org/abs/2104.09841))
-* Smoothed-AND mask (SAND-mask, [Shahtalebi et al., 2021](https://arxiv.org/abs/2106.02266))
-* Invariant Gradient Variances for Out-of-distribution Generalization (Fishr, [Rame et al., 2021](https://arxiv.org/abs/2109.02934))
-* Learning Representations that Support Robust Transfer of Predictors (TRM, [Xu et al., 2021](https://arxiv.org/abs/2110.09940))
-* Invariance Principle Meets Information Bottleneck for Out-of-Distribution Generalization (IB-ERM , [Ahuja et al., 2021](https://arxiv.org/abs/2106.06607))
-* Invariance Principle Meets Information Bottleneck for Out-of-Distribution Generalization (IB-IRM, [Ahuja et al., 2021](https://arxiv.org/abs/2106.06607))
-* Optimal Representations for Covariate Shift (CAD & CondCAD, [Ruan et al., 2022](https://arxiv.org/abs/2201.00057)), contributed by [@ryoungj](https://github.com/ryoungj)
-* Quantifying and Improving Transferability in Domain Generalization (Transfer, [Zhang et al., 2021](https://arxiv.org/abs/2106.03632)), contributed by [@Gordon-Guojun-Zhang](https://github.com/Gordon-Guojun-Zhang)
-* Invariant Causal Mechanisms through Distribution Matching (CausIRL with CORAL or MMD, [Chevalley et al., 2022](https://arxiv.org/abs/2206.11646)), contributed by [@MathieuChevalley](https://github.com/MathieuChevalley)
-* Empirical Quantile Risk Minimization (EQRM, [Eastwood et al., 2022](https://arxiv.org/abs/2207.09944)), contributed by [@cianeastwood](https://github.com/cianeastwood)
-* Domain Generalisation via Risk Distribution Matching (RDM, [Nguyen et al., 2024](https://arxiv.org/abs/2310.18598)), contributed by [@nktoan](https://github.com/nktoan), [authors' contact email](mailto:ktoan271199@gmail.com)
-* ADRMX: Additive Disentanglement of Domain Features with Remix Loss (ADRMX, [Demirel et al., 2023](https://arxiv.org/abs/2308.06624)), contributed by [@berkerdemirel](https://github.com/berkerdemirel)
-* ERM++: An Improved Baseline for Domain Generalization( ERM++, [Teterwak et. al. 2023](https://arxiv.org/abs/2304.01973), contributed by [@piotr-teterwak](https://cs-people.bu.edu/piotrt/).
-* Uniform Risk Minimization (URM) from Uniformly Distributed Feature Representations for Fair and Robust Learning ([Krishnamachari et al., 2024](https://openreview.net/forum?id=PgLbS5yp8n)), contributed by [@kiranchari](https://github.com/kiranchari), [authors' contact email](mailto:kirankchari@gmail.com)
-
-Send us a PR to add your algorithm! Our implementations use ResNet50 / ResNet18 networks ([He et al., 2015](https://arxiv.org/abs/1512.03385)) and the hyper-parameter grids [described here](domainbed/hparams_registry.py).
-
-## Available datasets
-
-The [currently available datasets](domainbed/datasets.py) are:
-
-* RotatedMNIST ([Ghifary et al., 2015](https://arxiv.org/abs/1508.07680))
-* ColoredMNIST ([Arjovsky et al., 2019](https://arxiv.org/abs/1907.02893))
-* VLCS  ([Fang et al., 2013](https://openaccess.thecvf.com/content_iccv_2013/papers/Fang_Unbiased_Metric_Learning_2013_ICCV_paper.pdf))
-* PACS ([Li et al., 2017](https://arxiv.org/abs/1710.03077))
-* Office-Home ([Venkateswara et al., 2017](https://arxiv.org/abs/1706.07522))
-* A TerraIncognita ([Beery et al., 2018](https://arxiv.org/abs/1807.04975)) subset
-* DomainNet ([Peng et al., 2019](http://ai.bu.edu/M3SDA/))
-* A SVIRO ([Dias Da Cruz et al., 2020](https://arxiv.org/abs/2001.03483)) subset
-* WILDS ([Koh et al., 2020](https://arxiv.org/abs/2012.07421)) FMoW ([Christie et al., 2018](https://arxiv.org/abs/1711.07846)) about satellite images
-* WILDS ([Koh et al., 2020](https://arxiv.org/abs/2012.07421)) Camelyon17 ([Bandi et al., 2019](https://pubmed.ncbi.nlm.nih.gov/30716025/)) about tumor detection in tissues
-* Spawrious ([Lynch et al., 2023](https://arxiv.org/abs/2303.05470))
-
-Send us a PR to add your dataset! Any custom image dataset with folder structure `dataset/domain/class/image.xyz` is readily usable. While we include some datasets from the [WILDS project](https://wilds.stanford.edu/), please use their [official code](https://github.com/p-lambda/wilds/) if you wish to participate in their leaderboard.
-
-## Available model selection criteria
-
-[Model selection criteria](domainbed/model_selection.py) differ in what data is used to choose the best hyper-parameters for a given model:
-
-* `IIDAccuracySelectionMethod`: A random subset from the data of the training domains.
-* `LeaveOneOutSelectionMethod`: A random subset from the data of a held-out (not training, not testing) domain.
-* `OracleSelectionMethod`: A random subset from the data of the test domain.
-
-## Quick start
-
-Download the datasets:
-
-```sh
-python3 -m domainbed.scripts.download \
-       --data_dir=./domainbed/data
+domainbed/                # DomainBed (Facebook Research) training framework, extended with
+                           # DDB's two-tiered domain batching and SynDomain_* auto-discovery
+environment/               # environment setup script
+slurm_examples/             # example SLURM job templates for each pipeline stage
 ```
 
-Train a model:
+## The generation pipeline
+
+This is the core contribution of the paper, and the part of this repository most
+worth reading if you want to reproduce or build on DDB. For each unordered pair of
+source domains `(i, j)` and each class `c`:
+
+1. **Stage 1 - embedding extraction** (`distribution_bridge/generation/extract_embeddings.py`):
+   every image is encoded with an OpenCLIP ViT-H/14 image encoder into
+   `R^1024`, cached per `(domain, class)` as an `.npz` of the full embedding matrix
+   plus its empirical mean/covariance.
+
+2. **Stage 2a - OT interpolation + generation** (`distribution_bridge/generation/ot_interpolate.py`,
+   `generate_ot.py`): for each interpolation weight `t in {1/6, ..., 5/6}`, Algorithm 1
+   computes a Sinkhorn optimal-transport plan between the two domains' class-conditional
+   empirical distributions, barycentrically projects, and linearly interpolates at `t`
+   to produce a set of interpolant embeddings. A subset of these condition the unCLIP
+   decoder (`unclip_pipeline.py`) to synthesize images whose CLIP embeddings track the
+   interpolated distribution. The resulting images are written to
+   `SynDomain_OT_<domA>_<domB>_t<k>of6/<class>/*.jpg` - a naming convention DomainBed's
+   `datasets.py` auto-discovers and auto-prunes per leave-one-domain-out configuration
+   (any synthetic pair touching the held-out test domain is excluded automatically).
+
+3. **Stage 2b - Diff-Src control** (`generate_diffsrc.py`): an ablation condition with
+   identical generation budget and decoder settings, but conditioning vectors are
+   sampled directly from the two domains' *raw* embeddings (no OT interpolation) -
+   used to isolate the OT interpolation's specific contribution from the effect of
+   simply adding more synthetic training data.
+
+Both generation scripts write per-image conditioning-vector metadata alongside the
+JPEGs, consumed by the fidelity-verification scripts in `distribution_bridge/analysis/`.
+
+See `slurm_examples/01_extract_embeddings.sh` through `03_generate_diffsrc.sh` for
+runnable examples.
+
+## Training
+
+`domainbed/scripts/train.py` implements DDB's two-tiered domain batching: every
+training step draws one mini-batch from each original source domain plus
+`k_syn_domains_per_step` mini-batches from a random subset of the available
+synthetic domains, so synthetic data augments rather than replaces the original
+training distribution. Point `--data_dir` at a directory containing the original
+domain folders alongside any `SynDomain_*` folders produced by Stage 2; see
+`slurm_examples/04_train_domainbed.sh`. `distribution_bridge/data_prep/` contains
+helpers for building condition-specific data roots (e.g. isolating only the OT or
+only the Diff-Src synthetic domains, or subsampling to a fixed `K` for a covering-
+radius sweep).
+
+## Analysis / verification
+
+`distribution_bridge/analysis/` re-encodes generated images and measures embedding-space
+quantities directly from cached CLIP embeddings (no additional generation or
+training required):
+
+* **`eps_gen.py`** - generation fidelity: how closely a generated image's CLIP
+  re-encoding matches its conditioning embedding (Assumption 3.4).
+* **`eps_extrap.py`** - extrapolation distance: the worst-case Wasserstein-2 distance
+  from a held-out target domain's class-conditional distribution to the nearest point
+  on the source 1-skeleton (Definition 3.4), i.e. how far a target lies outside the
+  region DDB's covering-radius guarantee actually covers.
+* **`table7_reconcile.py`** - reproduces the paper's Table 7 covering-radius statistics
+  from cached embeddings via exact optimal transport, with a pass/fail sanity gate
+  against the published values before proceeding to further analysis.
+* **`eps_extrap_normalized.py`** - `eps_extrap.py`'s measurement under the ℓ2-normalized
+  embedding convention, with argmin-t and nearest-source-pair tracking for the
+  supplementary per-class breakdown.
+
+## Setup
 
 ```sh
-python3 -m domainbed.scripts.train\
-       --data_dir=./domainbed/data/MNIST/\
-       --algorithm IGA\
-       --dataset ColoredMNIST\
-       --test_env 2
+export DDB_VENV=/path/to/ddb_env
+export DDB_HF_HOME=/path/to/hf_cache
+export DDB_TORCH_HOME=/path/to/torch_cache
+./environment/setup_env.sh
 ```
 
-Launch a sweep:
+This creates a virtual environment with the pinned dependencies for both the
+DomainBed training framework and the generation/analysis pipeline (see
+`domainbed/requirements.txt` and `environment/setup_env.sh`), and pre-downloads the
+unCLIP, OpenCLIP, and ImageNet-pretrained ResNet-50 weights into an offline-reusable
+cache - useful on clusters where compute nodes have no internet access.
+
+Download the DomainBed benchmark datasets:
 
 ```sh
-python -m domainbed.scripts.sweep launch\
-       --data_dir=/my/datasets/path\
-       --output_dir=/my/sweep/output/path\
+python -m domainbed.scripts.download --data_dir=./data
+```
+
+## Smoke test
+
+Before running the full pipeline, `distribution_bridge/smoke_test/smoke_test.py` checks
+that the environment and unCLIP pipeline load correctly and that round-trip
+embedding fidelity (encode -> generate -> re-encode -> cosine similarity) is
+sane on a small sample.
+
+---
+
+## DomainBed
+
+This repository builds on [DomainBed](https://github.com/facebookresearch/DomainBed),
+a PyTorch suite of benchmark datasets and algorithms for domain generalization
+([Gulrajani and Lopez-Paz, 2020](https://arxiv.org/abs/2007.01434)). All 30+ of
+DomainBed's algorithms and datasets remain available and unmodified except for the
+two-tiered synthetic-domain batching extension described above. See
+[`domainbed/algorithms.py`](domainbed/algorithms.py) and
+[`domainbed/datasets.py`](domainbed/datasets.py) for the full list, and
+[`domainbed/hparams_registry.py`](domainbed/hparams_registry.py) for hyperparameter
+grids.
+
+Launch a standard DomainBed sweep (see the DomainBed docs for `command_launchers.py`):
+
+```sh
+python -m domainbed.scripts.sweep launch \
+       --data_dir=/my/datasets/path \
+       --output_dir=/my/sweep/output/path \
        --command_launcher MyLauncher
-```
-
-Here, `MyLauncher` is your cluster's command launcher, as implemented in `command_launchers.py`. At the time of writing, the entire sweep trains tens of thousands of models (all algorithms x all datasets x 3 independent trials x 20 random hyper-parameter choices). You can pass arguments to make the sweep smaller:
-
-```sh
-python -m domainbed.scripts.sweep launch\
-       --data_dir=/my/datasets/path\
-       --output_dir=/my/sweep/output/path\
-       --command_launcher MyLauncher\
-       --algorithms ERM DANN\
-       --datasets RotatedMNIST VLCS\
-       --n_hparams 5\
-       --n_trials 1
-```
-
-After all jobs have either succeeded or failed, you can delete the data from failed jobs with ``python -m domainbed.scripts.sweep delete_incomplete`` and then re-launch them by running ``python -m domainbed.scripts.sweep launch`` again. Specify the same command-line arguments in all calls to `sweep` as you did the first time; this is how the sweep script knows which jobs were launched originally.
-
-To view the results of your sweep:
-
-````sh
-python -m domainbed.scripts.collect_results\
-       --input_dir=/my/sweep/output/path
-````
-
-## Running unit tests
-
-DomainBed includes some unit tests and end-to-end tests. While not exhaustive, but they are a good sanity-check. To run the tests:
-
-```sh
-python -m unittest discover
-```
-
-By default, this only runs tests which don't depend on a dataset directory. To run those tests as well:
-
-```sh
-DATA_DIR=/my/datasets/path python -m unittest discover
 ```
 
 ## License
 
-This source code is released under the MIT license, included [here](LICENSE).
+Released under the MIT license, included [here](LICENSE).
 
-## Core Contributors
+## Citation
 
-David Lopez-Paz
-
-Ishaan Gulrajani
-
-Piotr Teterwak
+If you use this code, please cite the paper (citation to be added on publication).
