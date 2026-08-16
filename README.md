@@ -114,6 +114,16 @@ training required):
   embedding convention, with argmin-t and nearest-source-pair tracking for the
   supplementary per-class breakdown.
 
+## Pre-generated synthetic data
+
+Running the full generation pipeline from scratch takes several GPU-hours. The
+PACS synthetic domains used in the paper's experiments (10,500 OT-interpolated +
+10,500 Diff-Src control images, plus per-image conditioning-embedding metadata) are
+available as a [Release asset](https://github.com/MahmoudOsama97/Distribution_Bridge/releases/tag/pacs-synthetic-v1)
+rather than committed to the repository. Extract it into `data/pacs/` alongside the
+4 original PACS domains (downloaded separately via `domainbed/scripts/download.py`)
+to reproduce the paper's training setup without re-running Stage 2.
+
 ## Setup
 
 ```sh
