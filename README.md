@@ -214,11 +214,16 @@ Running the full pipeline from scratch costs real GPU-hours, so a small,
 representative sample of DDB's synthetic output — OT-interpolated and
 Diff-Src control images, plus their conditioning-embedding metadata, across
 **PACS, OfficeHome, VLCS, and TerraIncognita** — is published as a [GitHub
-Release](https://github.com/MahmoudOsama97/Distribution_Bridge/releases)
-rather than committed to the repo. Grab it, drop it next to the real domain
+Release](https://github.com/MahmoudOsama97/Distribution_Bridge/releases/tag/synthetic-samples-v1)
+rather than committed to the repo. Each benchmark contributes one source-domain
+pair and 2 classes, generated through the exact same pipeline end to end
+(all 5 interpolation weights + the Diff-Src control) — a representative slice,
+not the full combinatorial sweep. Grab it, drop it next to the real domain
 folders downloaded via `domainbed.scripts.download`, and you can poke at the
 output or feed it straight into `train.py` without regenerating anything
-yourself.
+yourself. Need full coverage for a benchmark instead? Re-run
+`distribution_bridge/generation/` yourself — it scales to any DomainBed
+dataset via the `--domains`/`--classes` flags.
 
 ## 🧪 Smoke test
 
