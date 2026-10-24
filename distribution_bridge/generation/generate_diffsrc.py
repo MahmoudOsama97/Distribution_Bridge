@@ -61,18 +61,25 @@ def main():
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--pair_filter", default=None)
     ap.add_argument("--class_filter", default=None)
+    ap.add_argument("--domains", default=None,
+                     help="comma-separated override of DOMAINS, for non-PACS datasets")
+    ap.add_argument("--classes", default=None,
+                     help="comma-separated override of CLASSES, for non-PACS datasets")
     args = ap.parse_args()
+
+    domains = args.domains.split(",") if args.domains else DOMAINS
+    classes_all = args.classes.split(",") if args.classes else CLASSES
 
     dtype = torch.float16 if args.device == "cuda" else torch.float32
     print(f"Loading unCLIP pipeline on {args.device} ({dtype})...")
     pipe, _, _ = load_pipeline(device=args.device, dtype=dtype)
     generator = torch.Generator(device=args.device).manual_seed(SEED)
 
-    pairs = list(itertools.combinations(sorted(DOMAINS), 2))
+    pairs = list(itertools.combinations(sorted(domains), 2))
     if args.pair_filter:
         a, b = args.pair_filter.split(",")
         pairs = [p for p in pairs if set(p) == {a, b}]
-    classes = CLASSES if not args.class_filter else [args.class_filter]
+    classes = classes_all if not args.class_filter else [args.class_filter]
 
     total_images = 0
     for domA, domB in pairs:
