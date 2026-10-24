@@ -8,7 +8,7 @@
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](environment/setup_env.sh)
 [![Built on DomainBed](https://img.shields.io/badge/built%20on-DomainBed-informational)](https://github.com/facebookresearch/DomainBed)
 
-**Mahmoud Soliman · Ahmed Elgazwy · Ahmed Radwan · Omar Abdelaziz · Ahmad Abdel-Qader · Islam Osman · Mohamed S. Shehata**
+**Mahmoud Soliman · Ahmed Elgazwy · Ahmed Radwan · Omar Abdelaziz · Ahmad Abdel-Qader · Mohamed S. Shehata**
 *The University of British Columbia, Kelowna, BC, Canada*
 
 </div>
