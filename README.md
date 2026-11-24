@@ -207,7 +207,9 @@ for w in "$src"/SynDomain_OT_*_t1of6; do
     done
   done
 done
-``` Point `--data_dir` at a
+```
+
+Point `--data_dir` at a
 directory holding the original domain folders next to whatever `SynDomain_*`
 folders Stage 2 produced (`slurm_examples/04_train_domainbed.sh` has a full
 example). `distribution_bridge/data_prep/` has helpers for carving out
