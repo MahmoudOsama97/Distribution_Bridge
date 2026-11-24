@@ -97,9 +97,12 @@ python -m distribution_bridge.generation.generate_ot \
   --embeddings_dir ./results/stage1_embeddings \
   --data_root ./data/pacs --metadata_dir ./results/stage2_metadata
 
-# 5. Train anything in DomainBed on the densified data
+# 5. Pool the five weights of each source pair into one synthetic domain
+#    (paper setup; see "Training" below for the snippet that builds ./data_pooled)
+
+# 6. Train anything in DomainBed on the densified data
 python -m domainbed.scripts.train \
-  --data_dir ./data --dataset PACS --algorithm ERM --test_envs 0 \
+  --data_dir ./data_pooled --dataset PACS --algorithm ERM --test_envs 0 \
   --hparams '{"k_syn_domains_per_step":3}'
 ```
 
@@ -159,7 +162,10 @@ Generated images land in
 convention DomainBed's `datasets.py` reads directly: it auto-discovers every
 synthetic domain and automatically prunes any pair that touches the current
 held-out test domain, so leave-one-domain-out evaluation stays leakage-free
-for free.
+for free. Each `_t<k>of6` folder holds one interpolation weight; in the paper's
+configuration the five weight folders of a pair are pooled into a single
+synthetic domain `SynDomain_OT_<domA>_<domB>`, so each held-out target has
+three synthetic domains (the pairs that do not involve it).
 
 **3 — Control for it.** (`generate_diffsrc.py`) Same decoder, same budget,
 same everything — except the conditioning vectors come straight from the raw
@@ -178,9 +184,30 @@ Runnable examples: `slurm_examples/01_extract_embeddings.sh` through
 
 `domainbed/scripts/train.py` implements DDB's two-tiered domain batching:
 every step pulls one mini-batch from *each* original source domain, plus
-`k_syn_domains_per_step` mini-batches from a random subset of the synthetic
-domains available for that configuration. Synthetic data augments the
-training mix — it never replaces the real sources. Point `--data_dir` at a
+`k_syn_domains_per_step` mini-batches from the synthetic domains available for
+that configuration (a random subset if more than `k` are available). With the
+paper's pooled layout there are exactly three synthetic domains per held-out
+target, so `k_syn_domains_per_step=3` uses all three in every step; images are
+drawn uniformly within each pooled domain, so each of the five weights makes up
+one fifth of a synthetic mini-batch in expectation. Synthetic data augments the
+training mix — it never replaces the real sources.
+
+To build the pooled data root from the per-weight folders (non-destructive;
+uses symlinks):
+
+```bash
+src=./data/pacs; dst=./data_pooled/pacs; mkdir -p "$dst"
+for d in art_painting cartoon photo sketch; do ln -s "$(realpath "$src/$d")" "$dst/$d"; done
+for w in "$src"/SynDomain_OT_*_t1of6; do
+  pair=$(basename "${w%_t1of6}")
+  for k in 1 2 3 4 5; do
+    for cls in "$src/${pair}_t${k}of6"/*/; do
+      c=$(basename "$cls"); mkdir -p "$dst/$pair/$c"
+      for f in "$cls"*; do ln -s "$(realpath "$f")" "$dst/$pair/$c/t${k}_$(basename "$f")"; done
+    done
+  done
+done
+``` Point `--data_dir` at a
 directory holding the original domain folders next to whatever `SynDomain_*`
 folders Stage 2 produced (`slurm_examples/04_train_domainbed.sh` has a full
 example). `distribution_bridge/data_prep/` has helpers for carving out
